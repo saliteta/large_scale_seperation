@@ -1,12 +1,14 @@
 from scipy.ndimage import gaussian_filter
 import numpy as np
-from skimage import morphology
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 from scipy import ndimage as ndi
 from skimage import segmentation
 import matplotlib.pyplot as plt
-from display import *
+from utils.io import load_camera_intrinsics, load_camera_poses, load_points3D
+from utils.cameras import compute_frustum_plane_intersection, compute_plane_pca
+from utils.visualization import compute_mean_positions, compute_coverage, compute_total_distance, define_plane_axes, create_grid_points, create_plane_grid
+
 
 def preprocess_heatmap(heatmap):
     # Normalize the heatmap to range [0, 1]
@@ -16,7 +18,6 @@ def preprocess_heatmap(heatmap):
     heatmap_smooth = gaussian_filter(heatmap_normalized, sigma=2)
     
     return heatmap_smooth
-
 
 def segment_heatmap(heatmap_smooth):
     # Compute the local minima (negative peaks) as markers
@@ -101,7 +102,6 @@ def associate_images_with_regions(camera_poses, camera_intrinsics, labels, plane
                 region_image_map.setdefault(region_label, []).append(image_id)
     
     return region_image_map
-
 
 def main():
     # Paths to COLMAP output files
@@ -199,5 +199,6 @@ def main():
         region_image_map = associate_images_with_regions(
             camera_poses, camera_intrinsics, labels, plane_point, normal_vector, u, v, u_grid, v_grid
         )
+
 if __name__ == "__main__":
     main()
