@@ -17,17 +17,22 @@ def preprocess_heatmap(heatmap):
     return heatmap_smooth
 
 def segment_heatmap(heatmap_smooth):
-    # Compute the local minima (negative peaks) as markers
-    local_maxi = peak_local_max(
-        heatmap_smooth, indices=False, footprint=np.ones((3, 3)), labels=None
+    # Compute the local maxima coordinates
+    local_maxi_coords = peak_local_max(
+        heatmap_smooth, footprint=np.ones((3, 3)), labels=None
     )
-    markers = ndi.label(local_maxi)[0]
     
-    # Apply watershed segmentation
+    # Create an empty array of the same shape as heatmap_smooth to hold the markers
+    markers = np.zeros_like(heatmap_smooth, dtype=int)
+    
+    # Label each local maxima with a unique value
+    for i, coords in enumerate(local_maxi_coords, 1):
+        markers[tuple(coords)] = i
+    
+    # Apply watershed segmentation using the labeled markers
     labels = watershed(-heatmap_smooth, markers, mask=heatmap_smooth)
     
     return labels
-
 def extract_boundaries(labels):
     # Find boundaries between regions
     boundaries = segmentation.find_boundaries(labels, mode='outer')
