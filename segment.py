@@ -1,118 +1,20 @@
-from scipy.ndimage import gaussian_filter
 import numpy as np
-from skimage.feature import peak_local_max
-from skimage.segmentation import watershed
-from scipy import ndimage as ndi
-from skimage import segmentation
-import matplotlib.pyplot as plt
-from utils.io import load_camera_intrinsics, load_camera_poses, load_points3D
+from utils.io import load_camera_intrinsics, load_camera_poses, load_points3D, regional_map_to_colmap
 from utils.cameras import compute_frustum_plane_intersection, compute_plane_pca
 from utils.visualization import compute_mean_positions, compute_coverage, compute_total_distance, define_plane_axes, create_grid_points, create_plane_grid
+from utils.heatmap_processing import preprocess_heatmap, segment_heatmap, extract_boundaries, plot_heatmap_with_boundaries, associate_images_with_regions
 
-
-def preprocess_heatmap(heatmap):
-    # Normalize the heatmap to range [0, 1]
-    heatmap_normalized = heatmap / np.max(heatmap)
-    
-    # Apply Gaussian filter to smooth the heatmap
-    heatmap_smooth = gaussian_filter(heatmap_normalized, sigma=2)
-    
-    return heatmap_smooth
-
-def segment_heatmap(heatmap_smooth):
-    # Compute the local minima (negative peaks) as markers
-    local_maxi = peak_local_max(
-        heatmap_smooth, indices=False, footprint=np.ones((3, 3)), labels=None
-    )
-    markers = ndi.label(local_maxi)[0]
-    
-    # Apply watershed segmentation
-    labels = watershed(-heatmap_smooth, markers, mask=heatmap_smooth)
-    
-    return labels
-
-def extract_boundaries(labels):
-    # Find boundaries between regions
-    boundaries = segmentation.find_boundaries(labels, mode='outer')
-    return boundaries
-
-def plot_heatmap_with_boundaries(heatmap, u_grid, v_grid, boundaries, step=None):
-    plt.figure(figsize=(10, 8))
-    plt.pcolormesh(u_grid, v_grid, heatmap, shading='auto', cmap='hot')
-    plt.colorbar(label='Number of Cameras')
-    if step is not None:
-        plt.title(f'Camera Coverage Heatmap with Boundaries at Step {step}')
-    else:
-        plt.title('Camera Coverage Heatmap with Boundaries')
-    plt.xlabel('U Axis')
-    plt.ylabel('V Axis')
-    plt.axis('equal')
-    
-    
-    # Overlay boundaries
-    plt.contour(u_grid, v_grid, boundaries, colors='blue', linewidths=1)
-    plt.savefig(f'visualization/boundaries/boundaries_{step}.png')
-    plt.close()
-
-def associate_images_with_regions(camera_poses, camera_intrinsics, labels, plane_point, normal_vector, u, v, u_grid, v_grid):
-    from shapely.geometry import Polygon, Point
-    from shapely.ops import unary_union
-    
-    # Create a mapping of regions (labels) to image IDs
-    region_image_map = {}
-    
-    # Create grid coordinate mapping
-    uu, vv = np.meshgrid(u_grid, v_grid)
-    grid_shape = uu.shape
-    grid_points_2d = np.column_stack((uu.ravel(), vv.ravel()))
-    
-    # For each region label, create a polygon of its area
-    regions = {}
-    for region_label in np.unique(labels):
-        if region_label == 0:
-            continue  # Skip background
-        mask = labels == region_label
-        region_coords = grid_points_2d[mask.ravel()]
-        if len(region_coords) < 3:
-            continue  # Need at least 3 points to form a polygon
-        polygon = Polygon(region_coords)
-        regions[region_label] = polygon
-    
-    # For each camera, determine which regions it covers
-    for image_id, pose in camera_poses.items():
-        camera_id = pose['camera_id']
-        intrinsic = camera_intrinsics.get(camera_id)
-        if intrinsic is None:
-            continue  # Skip if intrinsics are missing
-        # Compute the frustum-plane intersection
-        frustum_polygon = compute_frustum_plane_intersection(
-            pose, intrinsic, plane_point, normal_vector
-        )
-        if frustum_polygon is None:
-            continue
-        # Project frustum points onto plane axes to get 2D polygon
-        frustum_coords_u = np.dot(frustum_polygon - plane_point, u)
-        frustum_coords_v = np.dot(frustum_polygon - plane_point, v)
-        frustum_coords_2d = np.column_stack((frustum_coords_u, frustum_coords_v))
-        frustum_poly = Polygon(frustum_coords_2d)
-        
-        # Check for intersection with each region
-        for region_label, region_polygon in regions.items():
-            if frustum_poly.intersects(region_polygon):
-                region_image_map.setdefault(region_label, []).append(image_id)
-    
-    return region_image_map
+import pycolmap
 
 def main():
     # Paths to COLMAP output files
-    points3D_path = 'sparse/0/points3D.txt'
-    images_path = 'sparse/0/images.txt'
-    cameras_path = 'sparse/0/cameras.txt'
-
+    model_path = '../sparse/0'
+    reconstruction = pycolmap.Reconstruction(model_path) # we directly load the database
+    print(reconstruction.summary())
     # Load data
-    points = load_points3D(points3D_path)
-    camera_poses = load_camera_poses(images_path)
-    camera_intrinsics = load_camera_intrinsics(cameras_path)
+    points = load_points3D(reconstruction)
+    camera_poses = load_camera_poses(reconstruction)
+    camera_intrinsics = load_camera_intrinsics(reconstruction)
 
     # Compute the plane (mean point and normal vector)
     mean_point_cloud, normal_vector = compute_plane_pca(points)
@@ -199,6 +101,15 @@ def main():
         region_image_map = associate_images_with_regions(
             camera_poses, camera_intrinsics, labels, plane_point, normal_vector, u, v, u_grid, v_grid
         )
+        
+        
+        regional_map_to_colmap(
+            region_image_map=region_image_map,
+            reconstruction=reconstruction,
+            output_folder='don'
+        )
 
 if __name__ == "__main__":
     main()
+    
+    

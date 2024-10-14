@@ -4,6 +4,8 @@ from utils.cameras import compute_frustum_plane_intersection, compute_plane_pca
 from utils.visualization import compute_mean_positions, compute_coverage, compute_total_distance, define_plane_axes, create_grid_points, create_heatmap_animation, create_plane_grid, plot_coverage_heatmap
 
 
+
+
 def main():
     # Paths to COLMAP output files
     points3D_path = 'points3D.txt'
