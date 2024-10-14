@@ -15,6 +15,10 @@ def main():
     points = load_points3D(reconstruction)
     camera_poses = load_camera_poses(reconstruction)
     camera_intrinsics = load_camera_intrinsics(reconstruction)
+    
+    print(points)
+    exit()
+    print(camera_intrinsics.shape)
 
     # Compute the plane (mean point and normal vector)
     mean_point_cloud, normal_vector = compute_plane_pca(points)
