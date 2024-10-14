@@ -19,13 +19,19 @@ def preprocess_heatmap(heatmap):
 
 
 def segment_heatmap(heatmap_smooth):
-    # Compute the local minima (negative peaks) as markers
-    local_maxi = peak_local_max(
-        heatmap_smooth, indices=False, footprint=np.ones((3, 3)), labels=None
+    # Compute the local maxima coordinates
+    local_maxi_coords = peak_local_max(
+        heatmap_smooth, footprint=np.ones((3, 3)), labels=None
     )
-    markers = ndi.label(local_maxi)[0]
     
-    # Apply watershed segmentation
+    # Create an empty array of the same shape as heatmap_smooth to hold the markers
+    markers = np.zeros_like(heatmap_smooth, dtype=int)
+    
+    # Label each local maxima with a unique value
+    for i, coords in enumerate(local_maxi_coords, 1):
+        markers[tuple(coords)] = i
+    
+    # Apply watershed segmentation using the labeled markers
     labels = watershed(-heatmap_smooth, markers, mask=heatmap_smooth)
     
     return labels
@@ -105,9 +111,9 @@ def associate_images_with_regions(camera_poses, camera_intrinsics, labels, plane
 
 def main():
     # Paths to COLMAP output files
-    points3D_path = 'sparse/0/points3D.txt'
-    images_path = 'sparse/0/images.txt'
-    cameras_path = 'sparse/0/cameras.txt'
+    points3D_path = '../sparse copy/0/points3D.txt'
+    images_path = '../sparse copy/0/images.txt'
+    cameras_path = '../sparse copy/0/cameras.txt'
 
     # Load data
     points = load_points3D(points3D_path)
