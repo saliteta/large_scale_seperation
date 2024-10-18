@@ -2,6 +2,9 @@ import numpy as np
 from matplotlib.path import Path
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import matplotlib.cm as cm
+from plyfile import PlyData, PlyElement
+
 
 
 def create_plane_grid(plane_point, u, v, projected_frustums, grid_resolution):
@@ -26,7 +29,6 @@ def create_grid_points(plane_point, u, v, u_grid, v_grid):
     grid_points = plane_point + uu[..., np.newaxis] * u + vv[..., np.newaxis] * v
     return grid_points.reshape(-1, 3)
 
-
 def compute_coverage(grid_points, grid_shape, plane_point, u, v, projected_frustums):
     # Convert grid points to 2D coordinates in the plane
     coords_u = np.dot(grid_points - plane_point, u)
@@ -50,7 +52,7 @@ def compute_coverage(grid_points, grid_shape, plane_point, u, v, projected_frust
 
     return coverage_counts
 
-def create_heatmap_animation(heatmaps, u_grid, v_grid, grid_shape):
+def create_heatmap_animation(heatmaps, u_grid, v_grid, animation_location):
     fig, ax = plt.subplots(figsize=(10, 8))
     def update(frame):
         ax.clear()
@@ -62,9 +64,10 @@ def create_heatmap_animation(heatmaps, u_grid, v_grid, grid_shape):
         return im,
 
     ani = animation.FuncAnimation(fig, update, frames=len(heatmaps), blit=False)
-    ani.save('../../visualization/heatmap_animation.gif', writer='pillow')
     plt.show()
-
+    ani.save(animation_location, writer='pillow')
+    plt.close()
+    
 def plot_coverage_heatmap(coverage_counts, grid_shape, u_grid, v_grid, step=None):
     heatmap = coverage_counts.reshape(grid_shape)
     plt.figure(figsize=(10, 8))
@@ -79,7 +82,6 @@ def plot_coverage_heatmap(coverage_counts, grid_shape, u_grid, v_grid, step=None
     plt.axis('equal')
     plt.show()
     # Optionally, save the figure
-    plt.savefig(f'../../visualization/heatmap_step_{step}.png')
     plt.close()
 
 def compute_mean_positions(points, camera_poses):
@@ -110,3 +112,54 @@ def define_plane_axes(plane_normal):
     v = np.cross(plane_normal, u)
     v /= np.linalg.norm(v)
     return u, v
+
+def gaussian_confidence_visualization(witness_counts: np.ndarray, xyz: np.ndarray, output_location: str):
+    """_summary_
+
+    Args:
+        witness_counts (np.ndarray): For each Gaussian, how many time it has been witnessed
+        xyz (np.ndarray): The mean of that Gaussian
+        output_location (str): the output confidence ply location
+    """
+    threshold = -np.inf  # Keep all points
+
+    # Create a mask for points above the threshold
+    mask = witness_counts > threshold  # Remove points with counts <= threshold
+    
+    # Apply the mask to xyz and witness_counts
+    xyz_filtered = xyz[mask]
+    witness_counts_filtered = witness_counts[mask]
+    
+    # Recalculate scaled_counts
+    max_count_filtered = np.max(witness_counts_filtered)
+    if max_count_filtered > 0:
+        scaled_counts_filtered = witness_counts_filtered / max_count_filtered  # Values between 0 and 1
+    else:
+        scaled_counts_filtered = witness_counts_filtered  # All zeros
+    
+    # Map to colors
+    colormap = cm.get_cmap('jet')
+    colors = colormap(scaled_counts_filtered)  # Returns RGBA values
+    
+    # Prepare vertex data
+    vertex_data = np.empty(len(xyz_filtered), dtype=[
+        ('x', 'f4'),
+        ('y', 'f4'),
+        ('z', 'f4'),
+        ('red', 'u1'),
+        ('green', 'u1'),
+        ('blue', 'u1'),
+    ])
+    
+    vertex_data['x'] = xyz_filtered[:, 0]
+    vertex_data['y'] = xyz_filtered[:, 1]
+    vertex_data['z'] = xyz_filtered[:, 2]
+    vertex_data['red'] = (colors[:, 0] * 255).astype(np.uint8)
+    vertex_data['green'] = (colors[:, 1] * 255).astype(np.uint8)
+    vertex_data['blue'] = (colors[:, 2] * 255).astype(np.uint8)
+    
+    # Write to output ply file
+    vertex_element = PlyElement.describe(vertex_data, 'vertex')
+    plydata = PlyData([vertex_element])
+    output_filename = output_location
+    plydata.write(output_filename)

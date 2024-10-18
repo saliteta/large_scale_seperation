@@ -33,12 +33,13 @@ def segment_heatmap(heatmap_smooth):
     labels = watershed(-heatmap_smooth, markers, mask=heatmap_smooth)
     
     return labels
+
 def extract_boundaries(labels):
     # Find boundaries between regions
     boundaries = segmentation.find_boundaries(labels, mode='outer')
     return boundaries
 
-def plot_heatmap_with_boundaries(heatmap, u_grid, v_grid, boundaries, step=None):
+def plot_heatmap_with_boundaries(heatmap, u_grid, v_grid, boundaries, save_location, step=None):
     plt.figure(figsize=(10, 8))
     plt.pcolormesh(u_grid, v_grid, heatmap, shading='auto', cmap='hot')
     plt.colorbar(label='Number of Cameras')
@@ -50,10 +51,9 @@ def plot_heatmap_with_boundaries(heatmap, u_grid, v_grid, boundaries, step=None)
     plt.ylabel('V Axis')
     plt.axis('equal')
     
-    
     # Overlay boundaries
-    plt.contour(u_grid, v_grid, boundaries, colors='blue', linewidths=1)
-    plt.savefig(f'visualization/boundaries/boundaries_{step}.png')
+    plt.contour(u_grid, v_grid, boundaries, colors='blue', linewidths=3)
+    plt.savefig(f'{save_location}/seperation.png')
     plt.close()
 
 def associate_images_with_regions(camera_poses, camera_intrinsics, labels, plane_point, normal_vector, u, v, u_grid, v_grid):
