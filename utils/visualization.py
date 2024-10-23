@@ -163,3 +163,34 @@ def gaussian_confidence_visualization(witness_counts: np.ndarray, xyz: np.ndarra
     plydata = PlyData([vertex_element])
     output_filename = output_location
     plydata.write(output_filename)
+    
+
+def plot_heatmap_and_seperation(weights: np.ndarray, cluster_map: np.ndarray, K):
+    # Visualize and save the weight map
+    plt.figure(figsize=(8, 6))
+    plt.imshow(weights, cmap='viridis')
+    plt.title('Weight Map')
+    plt.colorbar(label='Weight')
+    plt.xlabel('Grid X-axis')
+    plt.ylabel('Grid Y-axis')
+    plt.savefig('weight_map.png', dpi=300)
+    plt.close()
+
+    # Visualize and save the clustered grid map
+    plt.figure(figsize=(8, 6))
+    plt.imshow(cluster_map, cmap='tab20')
+    plt.title('Clustered Grid Map')
+    plt.colorbar(label='Cluster Label')
+    plt.xlabel('Grid X-axis')
+    plt.ylabel('Grid Y-axis')
+    plt.savefig('clustered_grid_map.png', dpi=300)
+    plt.close()
+
+    # Calculate and display total weights per cluster
+    total_weights = []
+    for k in range(K):
+        total_weights.append(weights[cluster_map == k].sum())
+
+    print("Total weights per cluster:")
+    for k in range(K):
+        print(f"Cluster {k}: {total_weights[k]:.4f}")

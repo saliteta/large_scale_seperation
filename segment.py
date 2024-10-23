@@ -1,14 +1,13 @@
 import numpy as np
-from utils.io import load_camera_intrinsics, load_camera_poses, load_points3D, regional_map_to_colmap, create_dir_and_hint
-from utils.cameras import compute_frustum_plane_intersection, compute_plane_pca
-from utils.visualization import compute_mean_positions, compute_coverage, compute_total_distance, define_plane_axes, create_grid_points, create_plane_grid
-from utils.heatmap_processing import preprocess_heatmap, segment_heatmap, extract_boundaries, plot_heatmap_with_boundaries, associate_images_with_regions
+from utils.io import load_camera_poses, load_points3D, create_dir_and_hint, reginal_map_to_colmap
+from utils.clustering import project_camera_to_plan, cluster_positions, clustering_expansion
 import pycolmap
 import os
 from tqdm import tqdm
+from typing import Dict, List
 import argparse
 from colorama import Fore, Back
-from utils.visualization import create_heatmap_animation
+import matplotlib.pyplot as plt
 
 def parser():
     parser = argparse.ArgumentParser()
@@ -23,6 +22,38 @@ def parser():
     
     args = parser.parse_args()
     return args
+
+
+def extract_camera_positions(camera_poses):
+    positions = []
+    image_ids = []
+    image_names = []
+    for image_id, pose in camera_poses.items():
+        t = pose['t']
+        R = pose['R']
+        camera_center = -R.T @ t  # Camera center in world coordinates
+        positions.append(camera_center)
+        image_ids.append(image_id)
+        image_names.append(pose['name'])
+    return np.array(positions), image_ids, image_names
+
+
+def index_to_id(labels: Dict[int, int], image_id: List[int]) ->Dict[int, int]:
+    for key in labels:
+        for i in range(len(labels[key])):
+            labels[key][i] = image_id[labels[key][i]]
+    
+    return labels
+
+
+def visualize_clusters(positions_2d, labels, image_names):
+    plt.figure(figsize=(12, 8))
+    scatter = plt.scatter(positions_2d[:, 0], positions_2d[:, 1], c=labels, cmap='tab20', s=5)
+    plt.title('Image Clusters Projected onto 2D Plane')
+    plt.xlabel('Principal Component 1')
+    plt.ylabel('Principal Component 2')
+    plt.colorbar(scatter, label='Cluster Label')
+    plt.savefig(image_names)
 
 def main():
     # Paths to COLMAP output files
@@ -42,115 +73,28 @@ def main():
     # Load data
     points = load_points3D(reconstruction)
     camera_poses = load_camera_poses(reconstruction)
-    camera_intrinsics = load_camera_intrinsics(reconstruction)
     
-    # Compute the plane (mean point and normal vector)
-    mean_point_cloud, normal_vector = compute_plane_pca(points)
+   # Extract camera positions
+    positions, image_ids, _ = extract_camera_positions(camera_poses)
 
-    # Compute mean camera position
-    _, mean_camera_position, _ = compute_mean_positions(points, camera_poses)
+    # Project positions onto 2D plane using PCA
+    positions_2d = project_camera_to_plan(camera_pose=positions, points3D=points)
 
-    # Compute total distance to move along the normal vector
-    total_distance = compute_total_distance(mean_point_cloud, mean_camera_position, normal_vector)
-
-    # Number of steps to move the plane
-    N = 10  # Adjust as needed
-
-    # Create distances along the normal vector from 0 to total_distance
-    distances = np.linspace(0, total_distance, N)
-
-    # Define plane axes (u, v) orthogonal to the normal vector
-    u, v = define_plane_axes(normal_vector)
-
-    # Initialize lists to store data
-    heatmaps = []
-    plane_points_list = []
-    filter_seperation = []
-    # Loop over the steps
-    print("Start Processing and Segmentation")
-    for i, d in enumerate(tqdm(distances)):
-        # Move the plane
-        plane_point = mean_point_cloud + d * normal_vector
-        plane_points_list.append(plane_point)
-
-        # For each camera, compute the frustum-plane intersection
-        projected_frustums = []
-        for image_id, pose in camera_poses.items():
-            camera_id = pose['camera_id']
-            intrinsic = camera_intrinsics.get(camera_id)
-            if intrinsic is None:
-                continue  # Skip if intrinsics are missing
-            frustum_polygon = compute_frustum_plane_intersection(
-                pose, intrinsic, plane_point, normal_vector
-            )
-            if frustum_polygon is not None:
-                projected_frustums.append(frustum_polygon)
-
-        if not projected_frustums:
-            print(f"No frustums intersect with the plane at step {i+1}.")
-            continue
-
-        # Create a grid over the plane (ensure consistent grid across steps)
-        grid_resolution = 0.2  # Adjust as needed
-        if i == 0:
-            # For the first step, compute the overall grid bounds
-            grid_points, grid_shape, u_grid, v_grid = create_plane_grid(
-                plane_point, u, v, projected_frustums, grid_resolution
-            )
-        else:
-            # For subsequent steps, use the same grid
-            grid_points = create_grid_points(plane_point, u, v, u_grid, v_grid)
-
-        # Compute coverage
-        coverage_counts = compute_coverage(
-            grid_points, grid_shape, plane_point, u, v, projected_frustums
-        )
-
-        # Store heatmap
-        heatmaps.append(coverage_counts.reshape(grid_shape))
-        
-        # Preprocess the heatmap
-        heatmap = coverage_counts.reshape(grid_shape)
-        heatmap_smooth = preprocess_heatmap(heatmap)
-        
-        # Segment the heatmap
-        labels = segment_heatmap(heatmap_smooth)
-        
-        # Extract boundaries
-        boundaries = extract_boundaries(labels)
-        
-        # Plot the heatmap with boundaries
-        
-        # Associate images with regions
-        region_image_map = associate_images_with_regions(
-            camera_poses, camera_intrinsics, labels, plane_point, normal_vector, u, v, u_grid, v_grid
-        )
-        
-        distance_seperation_folder = os.path.join(output_path, f"distance_{i}")
-        flag = regional_map_to_colmap(
-            region_image_map=region_image_map,
-            reconstruction=reconstruction,
-            output_folder=distance_seperation_folder,
-            bound=(upper_bound, lower_bound)
-        )
-        
-        if flag == False:
-            filter_seperation.append(i)
-            continue
-        
-        plot_heatmap_with_boundaries(heatmap, u_grid, v_grid, boundaries, distance_seperation_folder, step=i+1)
+    # Perform clustering on 2D points
+    labels, kmeans_model = cluster_positions(positions_2d, lower_bound, upper_bound)
+    image_name = os.path.join(output_path, 'summary.png')
+    visualize_clusters(positions_2d, labels, image_name)
     
-    create_heatmap_animation(heatmaps, 
-                             u_grid, 
-                             v_grid,
-                             animation_location=os.path.join(output_path, "summary.gif"))
+    # Create overlapping clusters
+
+    cluster_assignments = clustering_expansion(positions_2d=positions_2d, labels=labels, expanding_target=upper_bound+30)
     
-    if len(filter_seperation) == 10:
-        print(Fore.RED, "Current reginal map does not satisfy the bounded requirment, try to decrease lower bound")
-        exit(1)
-    else:
-        print(Fore.GREEN, f"Segment Accomplish, we filtered: {filter_seperation} distance, result stored in the output folder: {output_path}")
+    regional_map = index_to_id(cluster_assignments, image_id=image_ids)
+
+    # Save cluster assignments
+    reginal_map_to_colmap(region_image_map=regional_map, reconstruction=reconstruction, output_folder=output_path)
     
+    print(Fore.GREEN, Back.RESET, f"Segmentation Accomplished result save in {output_path}")
 if __name__ == "__main__":
     main()
     

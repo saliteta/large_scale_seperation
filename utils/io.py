@@ -7,6 +7,7 @@ from pathlib import Path
 import copy
 from colorama import Fore, Back
 
+from tqdm import tqdm
 
 def load_points3D(reconstruction: pycolmap.Reconstruction):
     points = []
@@ -78,10 +79,10 @@ def verify_bounded(region_image_map:Dict[int, Dict[int, List]], bound: Tuple[int
 
     return True        
     
-def regional_map_to_colmap(region_image_map:Dict[int, Dict[int, List]], 
+def reginal_map_to_colmap(region_image_map:Dict[int, Dict[int, List]], 
                            reconstruction: pycolmap.Reconstruction, 
                            output_folder: Path,
-                           bound: Tuple[int]) -> bool:
+                           bound: Tuple[int] = (220, 280)) -> bool:
     """_summary_
 
     Args:
@@ -89,13 +90,13 @@ def regional_map_to_colmap(region_image_map:Dict[int, Dict[int, List]],
         reconstruction (pycolmap.Reconstruction): Original COLMAP reconstruction for large scale reconstruction
         output_folder (Path): The base output folder
     Output: 
-        The out put will be a sequence of folder, for example output_folder/0, output_folder/1, and so on
+        The output will be a sequence of folder, for example output_folder/0, output_folder/1, and so on
     """
-    if verify_bounded(region_image_map=region_image_map, bound=bound) == False:
-        return False
+    #if verify_bounded(region_image_map=region_image_map, bound=bound) == False:
+    #    return False
     os.makedirs(output_folder, exist_ok=True)
     # Process each region
-    for region_label, image_ids in region_image_map.items():
+    for region_label, image_ids in tqdm(region_image_map.items(), desc="saving sub-colmap and point cloud"):
 
         # Create a new Reconstruction object for this region
         region_reconstruction = pycolmap.Reconstruction()
