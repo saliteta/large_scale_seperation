@@ -7,6 +7,7 @@ from utils.io import load_camera_intrinsics, load_camera_poses
 import argparse
 from typing import List, Tuple
 from utils.visualization import gaussian_confidence_visualization
+from colorama import Fore, Back
 
 def read_ply_xyz(filename):
     plydata = PlyData.read(filename)
@@ -39,18 +40,28 @@ def parser():
 
 def to_list(colmap_folder: str, model_folder: str) -> Tuple[List[str]]:
     """
-
+    We should make pair 
     Args:
         colmap_folder (str): colmap seperation, it should contain, 1, 2, 3, 4 and so on
         model_folder (str): model folder, it should also contain, 1, 2, 3, 4 and so on
     Returns:
         Tuple[List[str]]: [colmap reconstruction list, ply list]
     """
-    colmap_reconstruction_list = [os.path.abspath(os.path.join(colmap_folder, file)) for file in os.listdir(colmap_folder)]
-    model_folder_list = [os.path.abspath(os.path.join(colmap_folder, file)) for file in os.listdir(colmap_folder)]
-    for i in range(len(model_folder_list)):
-        model_folder_list[i] = os.path.join(model_folder_list[i], 'point_cloud', 'iteration_30000', 'point_cloud.ply')
-    
+    colmap_list = [ name for name in os.listdir(colmap_folder) if os.path.isdir(os.path.join(colmap_folder, name)) ]
+    model_folder_list = []
+    colmap_reconstruction_list = []
+    error = False
+    for i in range(len(colmap_list)):
+        model_location = os.path.join(model_folder, colmap_list[i], 'point_cloud', 'iteration_30000', 'point_cloud.ply')
+        if os.path.exists(model_location): # Seperation Generate Accomplished
+            model_folder_list.append(os.path.join(model_location))
+            colmap_reconstruction_list.append(os.path.join(colmap_folder, colmap_list[i]))
+        else:
+            log_location = os.path.join(model_folder, colmap_list[i], 'training.log')
+            print(Fore.RED, Back.YELLOW, f"[Error!]: Gaussian Training Does Not Accomplsihed! We do not have the following file {model_location}, Training Log at: {log_location}")
+            error = True
+    if error and (len(model_folder_list)>1):
+        print(Fore.YELLOW, Back.GREEN, "[Warning!]: Some seperation did not reconstruct successfully, we merge other part together, if this is not desired, stop the process and exam the trainning log")
     return colmap_reconstruction_list, model_folder_list
 
 def main():
@@ -67,7 +78,7 @@ def main():
     assert len(ply_files) == len(colmap_folders), "Number of PLY files and COLMAP folders must be the same."
     
     filtered_vertex_data_list = []
-    
+    print(Fore.RESET, Back.RESET)
     for ply_filename, colmap_folder in zip(ply_files, colmap_folders):
         print(f'Processing PLY file: {ply_filename}')
         print(f'Using COLMAP reconstruction: {colmap_folder}')
@@ -122,8 +133,7 @@ def main():
             
             # Increment witness counts
             witness_counts[indices[valid]] += 1
-        
-        confidence_score_location = os.path.join(os.path.join(ply_filename.split('/')[:-3]), 'confidence_heatmap.ply')
+        confidence_score_location = os.path.join('/'.join(ply_filename.split('/')[:-3]), 'confidence_heatmap.ply')
         gaussian_confidence_visualization(witness_counts=witness_counts, xyz=xyz, output_location=confidence_score_location) # output to model location
         
         # Remove bottom pecent Gaussians based on witness counts

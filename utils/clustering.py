@@ -73,11 +73,20 @@ def clustering_expansion(positions_2d: np.ndarray, labels:np.ndarray, expanding_
     Returns:
         expanded_clusters (dict): Dictionary where key is cluster label and value is a list of indices of images assigned to that cluster.
     """
+    """
+    Expands each cluster to reach the target number of images by adding nearest neighbors to the cluster center,
+    allowing overlaps between clusters.
+
+    Args:
+        positions_2d (np.ndarray): The 2D positions of data points, shape (N, 2).
+        labels (np.ndarray): The initial cluster labels, shape (N,).
+        expanding_target (int): The desired number of images per cluster after expansion.
+
+    Returns:
+        expanded_clusters (dict): Dictionary where key is cluster label and value is a list of indices of images assigned to that cluster.
+    """
     # Initialize the output dictionary
     expanded_clusters = {}
-
-    # Keep track of which points have been assigned to clusters
-    assigned_points = set()
 
     # For each cluster
     unique_labels = np.unique(labels)
@@ -91,9 +100,9 @@ def clustering_expansion(positions_2d: np.ndarray, labels:np.ndarray, expanding_
 
         # Initialize the set of points in the expanded cluster
         expanded_indices = set(cluster_indices.tolist())
-        assigned_points.update(expanded_indices)
 
         # If the cluster already has the target size or more, continue
+        print(f"Initial size of cluster {label}: {len(expanded_indices)}")
         if len(expanded_indices) >= expanding_target:
             expanded_clusters[label] = list(expanded_indices)
             continue
@@ -104,17 +113,14 @@ def clustering_expansion(positions_2d: np.ndarray, labels:np.ndarray, expanding_
         # Get indices of all points sorted by distance to cluster center
         sorted_indices = np.argsort(distances)
 
-        # Exclude points already assigned to any cluster
-        sorted_indices = [idx for idx in sorted_indices if idx not in assigned_points]
-
         # Add nearest points to the cluster until reaching the target size
         for idx in sorted_indices:
             if len(expanded_indices) >= expanding_target:
                 break
             expanded_indices.add(idx)
-            assigned_points.add(idx)
 
         # Store the expanded cluster
         expanded_clusters[label] = list(expanded_indices)
+        print(f"Expanded size of cluster {label}: {len(expanded_indices)}")
 
     return expanded_clusters
